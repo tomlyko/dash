@@ -3,3 +3,5 @@
 def build(bld):
     obj = bld.create_ns3_program('tcp-stream', ['dash', 'internet', 'wifi', 'buildings', 'applications', 'point-to-point'])
     obj.source = 'tcp-stream.cc'
+    obj = bld.create_ns3_program('tcp-stream-lan', ['dash', 'internet', 'wifi', 'csma', 'buildings', 'applications', 'point-to-point'])
+    obj.source = 'tcp-stream-lan.cc'
