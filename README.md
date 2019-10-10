@@ -5,7 +5,7 @@ Now supports:
 - Traffic shaping,
 - More ABRs: simple benchmark ABR, MPC, and Bola,
 - More parameters:
-	- linkRate - Inital bandwidth of the link connecting the clients to the server,
+	- linkRate - Initial bandwidth of the link connecting the clients to the server,
    	- delay - The delay of the link connecting the clients to the server,
   	- trace - The relative path (from ns-3.x directory) to the network trace file,
 	- liveDelay - Number of full DASH segments behind live,
