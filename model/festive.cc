@@ -36,7 +36,7 @@ FestiveAlgorithm::FestiveAlgorithm (  const videoData &videoData,
   m_thrptThrsh (0.85)
 {
   NS_LOG_INFO (this);
-  m_smooth.push_back (5);  // after how many steps switch up is possible
+  m_smooth.push_back (1);  // after how many steps switch up is possible
   m_smooth.push_back (1);  // switch up by how many representatations at once
   NS_ASSERT_MSG (m_highestRepIndex >= 0, "The highest quality representation index should be => 0");
 }
@@ -52,39 +52,42 @@ FestiveAlgorithm::GetNextRep (const int64_t segmentCounter, int64_t clientId)
   answer.delayDecisionCase = 0;
 
   if (segmentCounter == 0)
-    {
+    {  
       answer.nextRepIndex = 0;
       answer.decisionCase = 0;
+	  answer.bandwidthEstimate = 0;
+	  switchHistory.push_front(0);
       return answer;
     }
   int64_t bufferNow = m_bufferData.bufferLevelNew.back () - (timeNow - m_throughput.transmissionEnd.back ());
 
   // not enough completed requests, select nextRepIndex
-  if (m_throughput.transmissionEnd.size () < 20)
+  if (m_throughput.transmissionEnd.size () < 1)
     {
       answer.nextRepIndex = 0;
       answer.decisionCase = 1;
+	  answer.bandwidthEstimate = 0;
       return answer;
     }
 
   // compute throughput estimation
   std::vector<double> thrptEstimationTmp;
   for (unsigned sd = m_playbackData.playbackIndex.size (); sd-- > 0; )
-    {
-      if (m_throughput.bytesReceived.at (sd) == 0)
-        {
-          continue;
-        }
-      else
-        {
-          thrptEstimationTmp.push_back ((8.0 * m_throughput.bytesReceived.at (sd))
-                                        / ((double)((m_throughput.transmissionEnd.at (sd) - m_throughput.transmissionRequested.at (sd)) / 1000000.0)));
-        }
-      if (thrptEstimationTmp.size () == 20)
-        {
-          break;
-        }
-    }
+	{
+	  if (m_throughput.bytesReceived.at (sd) == 0)
+		{
+		  continue;
+		}
+	  else
+		{
+		  thrptEstimationTmp.push_back ((8.0 * m_throughput.bytesReceived.at (sd))
+										/ ((double)((m_throughput.transmissionEnd.at (sd) - m_throughput.transmissionRequested.at (sd)) / 1000000.0)));
+		}
+	  if (thrptEstimationTmp.size () == 20)
+		{
+		  break;
+		}
+	}
   // calculate harmonic mean of values in thrptEstimationTmp
   double harmonicMeanDenominator = 0;
   for (uint i = 0; i < thrptEstimationTmp.size (); i++)
@@ -92,6 +95,8 @@ FestiveAlgorithm::GetNextRep (const int64_t segmentCounter, int64_t clientId)
       harmonicMeanDenominator += 1 / (thrptEstimationTmp.at (i));
     }
   double thrptEstimation = thrptEstimationTmp.size () / harmonicMeanDenominator;
+  thrptEstimation = thrptEstimation * m_thrptThrsh;
+  answer.bandwidthEstimate = thrptEstimation/(double)1000000;
 
   // compute b_delay
   int64_t lowerBound = m_targetBuf - m_delta;
@@ -106,10 +111,10 @@ FestiveAlgorithm::GetNextRep (const int64_t segmentCounter, int64_t clientId)
   // select reference bit rate
   int64_t currentRepIndex = m_playbackData.playbackIndex.back ();
   int64_t refIndex = currentRepIndex;
-
+	
   // decide if we need to decrease
   if (currentRepIndex > 0
-      && m_videoData.averageBitrate.at (currentRepIndex) > thrptEstimation * m_thrptThrsh)
+      && m_videoData.averageBitrate.at (currentRepIndex) > thrptEstimation)
     {
       refIndex = currentRepIndex - 1;
       answer.decisionCase = 1;
@@ -151,28 +156,18 @@ FestiveAlgorithm::GetNextRep (const int64_t segmentCounter, int64_t clientId)
     {
       answer.nextRepIndex = currentRepIndex;
       answer.decisionCase = 3;
+	  switchHistory.push_front(0);
+	  if(switchHistory.size() > 10) { switchHistory.pop_back(); }
       return answer;
     }
 
-  // compute number of bit rate switches in the last 20 seconds
+  // compute number of bit rate switches in the last 10 segments
   int64_t numberOfSwitches = 0;
-  std::vector<int64_t> foundIndices;
-  for (unsigned _sd = m_playbackData.playbackStart.size () - 1; _sd-- > 0; )
-    {
-      if (m_playbackData.playbackStart.at (_sd) < timeNow)
-        {
-          break;
-        }
-      else if (currentRepIndex != m_playbackData.playbackIndex.at (_sd))
-        {
-          if (std::find (foundIndices.begin (), foundIndices.end (), currentRepIndex) != foundIndices.end ())
-            {
-              continue;
-            }
-          numberOfSwitches++;
-          foundIndices.push_back (currentRepIndex);
-        }
-    }
+  std::list <int> :: iterator it; 
+  for(it = switchHistory.begin(); it != switchHistory.end(); ++it) {
+	if(*it == 1) { numberOfSwitches++; }
+  }
+	
   double scoreEfficiencyCurrent = std::abs ((double)m_videoData.averageBitrate.at (currentRepIndex)
                                             / double(std::min (thrptEstimation, (double)m_videoData.averageBitrate.at (refIndex))) - 1.0);
 
@@ -181,16 +176,20 @@ FestiveAlgorithm::GetNextRep (const int64_t segmentCounter, int64_t clientId)
 
   double scoreStabilityCurrent = pow (2.0, (double)numberOfSwitches);
   double scoreStabilityRef = pow (2.0, ((double)numberOfSwitches)) + 1.0;
-
+	
   if ((scoreStabilityCurrent + m_alpha * scoreEfficiencyCurrent) < scoreStabilityRef + m_alpha * scoreEfficiencyRef)
     {
       answer.nextRepIndex = currentRepIndex;
       answer.decisionCase = 4;
+	  switchHistory.push_front(0);
+	  if(switchHistory.size() > 10) { switchHistory.pop_back(); }
       return answer;
     }
   else
     {
       answer.nextRepIndex = refIndex;
+	  switchHistory.push_front(1);
+	  if(switchHistory.size() > 10) { switchHistory.pop_back(); }
       return answer;
     }
 

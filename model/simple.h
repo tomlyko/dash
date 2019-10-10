@@ -16,8 +16,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef FESTIVE_ALGORITHM_H
-#define FESTIVE_ALGORITHM_H
+#ifndef SIMPLE_ALGORITHM_H
+#define SIMPLE_ALGORITHM_H
 
 #include "tcp-stream-adaptation-algorithm.h"
 
@@ -25,29 +25,26 @@ namespace ns3 {
 
 /**
  * \ingroup tcpStream
- * \brief Implementation of the Festive adaptation algorithm
+ * \brief Implementation of a simple adaptation logic: estimate bandwidth based on 5 last segments throughput
  */
-class FestiveAlgorithm : public AdaptationAlgorithm
+class SimpleAlgo : public AdaptationAlgorithm
 {
 public:
-  FestiveAlgorithm (  const videoData &videoData,
+  SimpleAlgo (  const videoData &videoData,
                       const playbackData & playbackData,
                       const bufferData & bufferData,
                       const throughputData & throughput);
 
-  algorithmReply GetNextRep (const int64_t segmentCounter, int64_t clientId);
+  algorithmReply GetNextRep ( const int64_t segmentCounter, int64_t clientId);
 
 private:
-  const int64_t m_targetBuf;
-  int64_t m_delta;
-  const double m_alpha;
-  const int64_t m_highestRepIndex;
-  const double m_thrptThrsh;
-  std::vector<int> m_smooth;
-  std::list<int>  switchHistory;
-  
-  uint64_t segDuration;
-};
+  /**
+   * \brief Average segment throughput during the time interval [t1, t2]
+   */
+  double AverageSegmentThroughput (int64_t currentSegment);
 
+  const int64_t m_highestRepIndex;
+  int64_t m_lastRepIndex;
+};
 } // namespace ns3
-#endif /* FESTIVE_ALGORITHM_H */
+#endif /* SIMPLE_ALGORITHM_H */

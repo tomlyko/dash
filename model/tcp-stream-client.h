@@ -31,6 +31,9 @@
 #include "tobasco2.h"
 #include "festive.h"
 #include "panda.h"
+#include "simple.h"
+#include "mpc.h"
+#include "bola.h"
 
 
 namespace ns3 {
@@ -103,7 +106,7 @@ private:
    */
   enum controllerEvent
   {
-    downloadFinished, playbackFinished, irdFinished, init
+    downloadFinished, playbackFinished, irdFinished, init, delayedSend
   };
   AdaptationAlgorithm *algo;
 
@@ -250,6 +253,11 @@ private:
    * and log files containing the used adaptation algorithm are created for output.
    */
   void InitializeLogFiles (std::string simulationId, std::string clientId, std::string numberOfClients);
+  
+  /*
+  	Returns the availability time for a segment/chunk (when it will become available for download). 
+  */
+  double getAvailabilityTime(int64_t segmentIndex);
 
   uint32_t m_dataSize; //!< packet payload size
   uint8_t *m_data; //!< packet payload data
@@ -289,6 +297,8 @@ private:
   bufferData m_bufferData; //!< Keep track of the buffer level
   playbackData m_playbackData; //!< Tracking the simulated playback of segments
   videoData m_videoData; //!< Information about segment sizes, average bitrates of representation levels and segment duration in microseconds
+
+  bool playbackStarted;
 
 };
 

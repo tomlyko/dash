@@ -30,7 +30,7 @@ PandaAlgorithm::PandaAlgorithm (  const videoData &videoData,
                                   const bufferData & bufferData,
                                   const throughputData & throughput) :
   AdaptationAlgorithm (videoData, playbackData, bufferData, throughput),
-  m_kappa (0.28),
+  m_kappa (0.14),
   m_omega (0.3),
   m_alpha (0.2),
   m_beta (0.2),
@@ -40,6 +40,7 @@ PandaAlgorithm::PandaAlgorithm (  const videoData &videoData,
 {
   NS_LOG_INFO (this);
   NS_ASSERT_MSG (m_highestRepIndex >= 0, "The highest quality representation index should be => 0");
+  //firstDone = false;
 }
 
 algorithmReply
@@ -49,8 +50,9 @@ PandaAlgorithm::GetNextRep (const int64_t segmentCounter, int64_t clientId)
   int64_t delay = 0;
   if (segmentCounter == 0)
     {
+			segDuration = m_videoData.segmentDuration;
       m_lastVideoIndex = 0;
-      m_lastBuffer = (m_videoData.segmentDuration) / 1e6;
+      m_lastBuffer = (segDuration) / 1e6;
       m_lastTargetInterrequestTime = 0;
 
       algorithmReply answer;
@@ -59,17 +61,20 @@ PandaAlgorithm::GetNextRep (const int64_t segmentCounter, int64_t clientId)
       answer.decisionTime = timeNow;
       answer.decisionCase = 0;
       answer.delayDecisionCase = 0;
+  	  answer.bandwidthEstimate = 0;
+  	  firstDone = false;
       return answer;
     }
 
-  // estimate the bandwidth share
-  double throughputMeasured = ((double)(m_videoData.averageBitrate.at (m_lastVideoIndex) * (m_videoData.segmentDuration / 1e6) )
+	double throughputMeasured = ((double)((8.0 * m_throughput.bytesReceived.back()))
                                / (double)((m_throughput.transmissionEnd.back () - m_throughput.transmissionRequested.back ()) / 1e6)) / 1e6;
-
-  if (segmentCounter == 1)
+	
+  //if (segmentCounter == 1)
+	if(firstDone == false)
     {
       m_lastBandwidthShare = throughputMeasured;
       m_lastSmoothBandwidthShare = m_lastBandwidthShare;
+		firstDone = true;
     }
 
   double actualInterrequestTime;
@@ -81,13 +86,9 @@ PandaAlgorithm::GetNextRep (const int64_t segmentCounter, int64_t clientId)
     {
       actualInterrequestTime = m_lastTargetInterrequestTime;
     }
-
+	
   double bandwidthShare = (m_kappa * (m_omega - std::max (0.0, m_lastBandwidthShare - throughputMeasured + m_omega)))
     * actualInterrequestTime + m_lastBandwidthShare;
-  if (bandwidthShare < 0)
-    {
-      bandwidthShare = 0;
-    }
   m_lastBandwidthShare = bandwidthShare;
 
   double smoothBandwidthShare;
@@ -125,8 +126,8 @@ PandaAlgorithm::GetNextRep (const int64_t segmentCounter, int64_t clientId)
 
   // schedule next download request
 
-  double targetInterrequestTime = std::max (0.0, ((double) ((m_videoData.averageBitrate.at (videoIndex) * (m_videoData.segmentDuration / 1e6)) / 1e6)
-                                                  / smoothBandwidthShare) + m_beta * (m_lastBuffer - m_bMin));
+	double a = (double)segDuration/1000000;
+  double targetInterrequestTime = std::max (0.0, ((double) ((m_videoData.averageBitrate.at (videoIndex) * (a)) / 1e6) / smoothBandwidthShare) + m_beta * (m_lastBuffer - m_bMin));
 
   if (m_throughput.transmissionEnd.back () - m_throughput.transmissionRequested.back () < m_lastTargetInterrequestTime * 1e6)
     {
@@ -140,13 +141,15 @@ PandaAlgorithm::GetNextRep (const int64_t segmentCounter, int64_t clientId)
   m_lastTargetInterrequestTime = targetInterrequestTime;
 
   m_lastBuffer = (m_bufferData.bufferLevelNew.back () - (timeNow - m_throughput.transmissionEnd.back ())) / 1e6;
-
+	
   algorithmReply answer;
   answer.nextRepIndex = videoIndex;
   answer.nextDownloadDelay = delay;
   answer.decisionTime = timeNow;
   answer.decisionCase = 0;
   answer.delayDecisionCase = 0;
+  answer.bandwidthEstimate = throughputMeasured;
+	
   return answer;
 }
 

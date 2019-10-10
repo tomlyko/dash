@@ -46,11 +46,15 @@ private:
   const double m_epsilon;
   const int64_t m_bMin;
   const int64_t m_highestRepIndex;
-  int64_t m_lastBuffer;
+  double m_lastBuffer;
   double m_lastTargetInterrequestTime;
   double m_lastBandwidthShare;
   double m_lastSmoothBandwidthShare;
   double m_lastVideoIndex;
+  
+  bool firstDone;
+  
+  uint64_t segDuration;
 };
 
 } // namespace ns3

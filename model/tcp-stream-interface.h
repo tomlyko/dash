@@ -39,6 +39,7 @@ struct algorithmReply
   int64_t decisionTime; //!< time in microsends when the adaptation algorithm decided which segment to download next, only for logging purposes
   int64_t decisionCase; //!< indicate in which part of the adaptation algorithm's code the decision was made, which representation level to request next, only for logging purposes
   int64_t delayDecisionCase; //!< indicate in which part of the adaptation algorithm's code the decision was made, how much time in microsends to wait until the segment shall be requested from server, only for logging purposes
+  double bandwidthEstimate; //bandwidth estimated by the ABR
 };
 
 

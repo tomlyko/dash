@@ -59,15 +59,30 @@ NS_LOG_COMPONENT_DEFINE ("TcpStreamClientApplication");
 
 NS_OBJECT_ENSURE_REGISTERED (TcpStreamClient);
 
-void
-TcpStreamClient::Controller (controllerEvent event)
+void TcpStreamClient::Controller (controllerEvent event)
 {
   NS_LOG_FUNCTION (this);
+  
+  //Delay segment requests to simulate live dash streaming where segments become available periodically
+  if(event == delayedSend)
+  {
+    RequestRepIndex ();
+    Send (m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter));
+    return;
+  }
+  
   if (state == initial)
     {
-      RequestRepIndex ();
       state = downloading;
-      Send (m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter));
+
+	  controllerEvent ev = delayedSend;
+    Time delay = MicroSeconds(getAvailabilityTime(m_segmentCounter)-Simulator::Now ().GetMicroSeconds ());
+	  if(delay <= 0) {
+      RequestRepIndex ();
+		  Send (m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter));
+	  } else {
+		  Simulator::Schedule (delay, &TcpStreamClient::Controller, this, ev);
+	  }
       return;
     }
 
@@ -78,9 +93,15 @@ TcpStreamClient::Controller (controllerEvent event)
         {
           /*  e_d  */
           m_segmentCounter++;
-          RequestRepIndex ();
           state = downloadingPlaying;
-          Send (m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter));
+          controllerEvent ev = delayedSend;
+          Time delay = MicroSeconds(getAvailabilityTime(m_segmentCounter)-Simulator::Now ().GetMicroSeconds ());
+          if(delay <= 0) {
+            RequestRepIndex ();
+            Send (m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter));
+          } else {
+            Simulator::Schedule (delay, &TcpStreamClient::Controller, this, ev);
+          }
         }
       else
         {
@@ -101,7 +122,7 @@ TcpStreamClient::Controller (controllerEvent event)
           if (m_segmentCounter < m_lastSegmentIndex)
             {
               m_segmentCounter++;
-              RequestRepIndex ();
+              //RequestRepIndex ();
             }
 
           if (m_bDelay > 0 && m_segmentCounter <= m_lastSegmentIndex)
@@ -109,6 +130,7 @@ TcpStreamClient::Controller (controllerEvent event)
               /*  e_dirs */
               state = playing;
               controllerEvent ev = irdFinished;
+
               Simulator::Schedule (MicroSeconds (m_bDelay), &TcpStreamClient::Controller, this, ev);
             }
           else if (m_segmentCounter == m_lastSegmentIndex)
@@ -119,7 +141,14 @@ TcpStreamClient::Controller (controllerEvent event)
           else
             {
               /*  e_d  */
-              Send (m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter));
+              controllerEvent ev = delayedSend;
+              Time delay = MicroSeconds(getAvailabilityTime(m_segmentCounter)-Simulator::Now ().GetMicroSeconds ());
+              if(delay <= 0) {
+                RequestRepIndex ();
+                Send (m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter));
+              } else {
+                Simulator::Schedule (delay, &TcpStreamClient::Controller, this, ev);
+              }      
             }
         }
       else if (event == playbackFinished)
@@ -147,7 +176,14 @@ TcpStreamClient::Controller (controllerEvent event)
         {
           /*  e_irc  */
           state = downloadingPlaying;
-          Send (m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter));
+          controllerEvent ev = delayedSend;
+          Time delay = MicroSeconds(getAvailabilityTime(m_segmentCounter)-Simulator::Now ().GetMicroSeconds ());
+          if(delay <= 0) {
+            RequestRepIndex ();
+            Send (m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter));
+          } else {
+            Simulator::Schedule (delay, &TcpStreamClient::Controller, this, ev);
+          }
         }
       else if (event == playbackFinished && m_currentPlaybackIndex < m_lastSegmentIndex)
         {
@@ -168,8 +204,7 @@ TcpStreamClient::Controller (controllerEvent event)
     }
 }
 
-TypeId
-TcpStreamClient::GetTypeId (void)
+TypeId TcpStreamClient::GetTypeId (void)
 {
   static TypeId tid = TypeId ("ns3::TcpStreamClient")
     .SetParent<Application> ()
@@ -186,7 +221,7 @@ TcpStreamClient::GetTypeId (void)
                    MakeUintegerAccessor (&TcpStreamClient::m_peerPort),
                    MakeUintegerChecker<uint16_t> ())
     .AddAttribute ("SegmentDuration",
-                   "The duration of a segment in microseconds",
+                   "The duration of a segment in nanoseconds",
                    UintegerValue (2000000),
                    MakeUintegerAccessor (&TcpStreamClient::m_segmentDuration),
                    MakeUintegerChecker<uint64_t> ())
@@ -230,20 +265,22 @@ TcpStreamClient::TcpStreamClient ()
   m_bufferUnderrun = false;
   m_currentPlaybackIndex = 0;
 
+  playbackStarted = 0;
+  
+  m_bufferData.bufferLevelNew.push_back (0);
 }
 
-void
-TcpStreamClient::Initialise (std::string algorithm, uint16_t clientId)
+void TcpStreamClient::Initialise (std::string algorithm, uint16_t clientId)
 {
   NS_LOG_FUNCTION (this);
   m_videoData.segmentDuration = m_segmentDuration;
   if (ReadInBitrateValues (ToString (m_segmentSizeFilePath)) == -1)
-    {
-      NS_LOG_ERROR ("Opening test bitrate file failed. Terminating.\n");
-      Simulator::Stop ();
-      Simulator::Destroy ();
-    }
-  m_lastSegmentIndex = (int64_t) m_videoData.segmentSize.at (0).size () - 1;
+  {
+    NS_LOG_ERROR ("Opening test bitrate file failed. Terminating.\n");
+    Simulator::Stop ();
+    Simulator::Destroy ();
+  }
+  m_lastSegmentIndex = (int64_t) m_videoData.segmentSize.at (0).size ();
   m_highestRepIndex = m_videoData.averageBitrate.size () - 1;
   if (algorithm == "tobasco")
     {
@@ -256,6 +293,18 @@ TcpStreamClient::Initialise (std::string algorithm, uint16_t clientId)
   else if (algorithm == "festive")
     {
       algo = new FestiveAlgorithm (m_videoData, m_playbackData, m_bufferData, m_throughput);
+    }
+  else if (algorithm == "simple")
+    {
+      algo = new SimpleAlgo (m_videoData, m_playbackData, m_bufferData, m_throughput);
+    }
+  else if (algorithm == "mpc")
+    {
+      algo = new MPCAlgo (m_videoData, m_playbackData, m_bufferData, m_throughput);
+    }
+  else if (algorithm == "bola")
+    {
+      algo = new BolaAlgo (m_videoData, m_playbackData, m_bufferData, m_throughput);
     }
   else
     {
@@ -283,25 +332,23 @@ TcpStreamClient::~TcpStreamClient ()
   m_dataSize = 0;
 }
 
-void
-TcpStreamClient::RequestRepIndex ()
+void TcpStreamClient::RequestRepIndex ()
 {
   NS_LOG_FUNCTION (this);
   algorithmReply answer;
 
-  answer = algo->GetNextRep ( m_segmentCounter, m_clientId );
+  answer = algo->GetNextRep ( m_segmentCounter, m_clientId );  
+
   m_currentRepIndex = answer.nextRepIndex;
   NS_ASSERT_MSG (answer.nextRepIndex <= m_highestRepIndex, "The algorithm returned a representation index that's higher than the maximum");
-
   m_playbackData.playbackIndex.push_back (answer.nextRepIndex);
   m_bDelay = answer.nextDownloadDelay;
-  // std::cerr << m_segmentCounter << "\n";
   LogAdaptation (answer);
+  
 }
 
 template <typename T>
-void
-TcpStreamClient::Send (T & message)
+void TcpStreamClient::Send (T & message)
 {
   NS_LOG_FUNCTION (this);
   PreparePacket (message);
@@ -311,8 +358,7 @@ TcpStreamClient::Send (T & message)
   m_socket->Send (p);
 }
 
-void
-TcpStreamClient::HandleRead (Ptr<Socket> socket)
+void TcpStreamClient::HandleRead (Ptr<Socket> socket)
 {
   NS_LOG_FUNCTION (this << socket);
   Ptr<Packet> packet;
@@ -324,7 +370,6 @@ TcpStreamClient::HandleRead (Ptr<Socket> socket)
   while ( (packet = socket->Recv ()) )
     {
       packetSize = packet->GetSize ();
-      LogThroughput (packetSize);
       m_bytesReceived += packetSize;
       if (m_bytesReceived == m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter))
         {
@@ -333,8 +378,7 @@ TcpStreamClient::HandleRead (Ptr<Socket> socket)
     }
 }
 
-int
-TcpStreamClient::ReadInBitrateValues (std::string segmentSizeFile)
+int TcpStreamClient::ReadInBitrateValues (std::string segmentSizeFile)
 {
   NS_LOG_FUNCTION (this);
   std::ifstream myfile;
@@ -344,7 +388,6 @@ TcpStreamClient::ReadInBitrateValues (std::string segmentSizeFile)
       return -1;
     }
   std::string temp;
-  int64_t averageByteSizeTemp = 0;
   while (std::getline (myfile, temp))
     {
       if (temp.empty ())
@@ -354,59 +397,67 @@ TcpStreamClient::ReadInBitrateValues (std::string segmentSizeFile)
       std::istringstream buffer (temp);
       std::vector<int64_t> line ((std::istream_iterator<int64_t> (buffer)),
                                  std::istream_iterator<int64_t>());
+	    m_videoData.averageBitrate.push_back(line.at(0));
+	    line.erase(line.begin());
       m_videoData.segmentSize.push_back (line);
-      averageByteSizeTemp = (int64_t) std::accumulate ( line.begin (), line.end (), 0.0) / line.size ();
-      m_videoData.averageBitrate.push_back ((8.0 * averageByteSizeTemp) / (m_videoData.segmentDuration / 1000000.0));
     }
   NS_ASSERT_MSG (!m_videoData.segmentSize.empty (), "No segment sizes read from file.");
   return 1;
 }
 
-void
-TcpStreamClient::SegmentReceivedHandle ()
+void TcpStreamClient::SegmentReceivedHandle ()
 {
   NS_LOG_FUNCTION (this);
-  m_transmissionEndReceivingSegment = Simulator::Now ().GetMicroSeconds ();
+  
+  m_transmissionEndReceivingSegment = Simulator::Now ().GetMicroSeconds (); 
 
-
+  //Update the current buffer level by calculating elapsed playback time
+  if (m_segmentCounter > 0 && playbackStarted == 1) {
+    
+    int64_t elapsedPlaybackTime = m_bufferData.bufferLevelNew.back () - (m_transmissionEndReceivingSegment - m_bufferData.timeNow.back ());
+    m_bufferData.bufferLevelNew.push_back (std::max (elapsedPlaybackTime, (int64_t) 0));
+    
+  }
+  
+  //Add the downloaded segment to the buffer
+  if(m_segmentCounter == 0) {
+    m_bufferData.bufferLevelNew.push_back (m_videoData.segmentDuration);
+  } else {
+    m_bufferData.bufferLevelNew.push_back (m_bufferData.bufferLevelNew.back () + m_videoData.segmentDuration);
+  }
   m_bufferData.timeNow.push_back (m_transmissionEndReceivingSegment);
-  if (m_segmentCounter > 0)
-    { //if a buffer underrun is encountered, the old buffer level will be set to 0, because the buffer can not be negative
-      m_bufferData.bufferLevelOld.push_back (std::max (m_bufferData.bufferLevelNew.back () -
-                                                       (m_transmissionEndReceivingSegment - m_throughput.transmissionEnd.back ()), (int64_t)0));
-    }
-  else //first segment
-    {
-      m_bufferData.bufferLevelOld.push_back (0);
-    }
-  m_bufferData.bufferLevelNew.push_back (m_bufferData.bufferLevelOld.back () + m_videoData.segmentDuration);
-
+  
   m_throughput.bytesReceived.push_back (m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter));
   m_throughput.transmissionStart.push_back (m_transmissionStartReceivingSegment);
   m_throughput.transmissionRequested.push_back (m_downloadRequestSent);
   m_throughput.transmissionEnd.push_back (m_transmissionEndReceivingSegment);
 
-  LogDownload ();
-
-  LogBuffer ();
-
   m_segmentsInBuffer++;
+  
+  LogDownload ();
+  LogThroughput (0);
+  LogBuffer ();
+  
   m_bytesReceived = 0;
   if (m_segmentCounter == m_lastSegmentIndex)
     {
       m_bDelay = 0;
     }
-
+ 
   controllerEvent event = downloadFinished;
   Controller (event);
-
+  
 }
 
-bool
-TcpStreamClient::PlaybackHandle ()
+bool TcpStreamClient::PlaybackHandle ()
 {
   NS_LOG_FUNCTION (this);
   int64_t timeNow = Simulator::Now ().GetMicroSeconds ();
+  if(playbackStarted == 0) {
+    playbackStarted = 1;
+    m_bufferData.timeNow.push_back (Simulator::Now ().GetMicroSeconds ());
+  } 
+
   // if we got called and there are no segments left in the buffer, there is a buffer underrun
   if (m_segmentsInBuffer == 0 && m_currentPlaybackIndex < m_lastSegmentIndex && !m_bufferUnderrun)
     {
@@ -418,11 +469,11 @@ TcpStreamClient::PlaybackHandle ()
   else if (m_segmentsInBuffer > 0)
     {
       if (m_bufferUnderrun)
-        {
-          m_bufferUnderrun = false;
-          bufferUnderrunLog << std::setfill (' ') << std::setw (13) << timeNow / (double)1000000 << "\n";
-          bufferUnderrunLog.flush ();
-        }
+      {
+        m_bufferUnderrun = false;
+        bufferUnderrunLog << std::setfill (' ') << std::setw (13) << timeNow / (double)1000000 << "\n";
+        bufferUnderrunLog.flush ();
+      }
       m_playbackData.playbackStart.push_back (timeNow);
       LogPlayback ();
       m_segmentsInBuffer--;
@@ -433,39 +484,34 @@ TcpStreamClient::PlaybackHandle ()
   return true;
 }
 
-void
-TcpStreamClient::SetRemote (Address ip, uint16_t port)
+void TcpStreamClient::SetRemote (Address ip, uint16_t port)
 {
   NS_LOG_FUNCTION (this << ip << port);
   m_peerAddress = ip;
   m_peerPort = port;
 }
 
-void
-TcpStreamClient::SetRemote (Ipv4Address ip, uint16_t port)
+void TcpStreamClient::SetRemote (Ipv4Address ip, uint16_t port)
 {
   NS_LOG_FUNCTION (this << ip << port);
   m_peerAddress = Address (ip);
   m_peerPort = port;
 }
 
-void
-TcpStreamClient::SetRemote (Ipv6Address ip, uint16_t port)
+void TcpStreamClient::SetRemote (Ipv6Address ip, uint16_t port)
 {
   NS_LOG_FUNCTION (this << ip << port);
   m_peerAddress = Address (ip);
   m_peerPort = port;
 }
 
-void
-TcpStreamClient::DoDispose (void)
+void TcpStreamClient::DoDispose (void)
 {
   NS_LOG_FUNCTION (this);
   Application::DoDispose ();
 }
 
-void
-TcpStreamClient::StartApplication (void)
+void TcpStreamClient::StartApplication (void)
 {
   NS_LOG_FUNCTION (this);
   if (m_socket == 0)
@@ -487,8 +533,7 @@ TcpStreamClient::StartApplication (void)
     }
 }
 
-void
-TcpStreamClient::StopApplication ()
+void TcpStreamClient::StopApplication ()
 {
   NS_LOG_FUNCTION (this);
 
@@ -508,8 +553,7 @@ TcpStreamClient::StopApplication ()
 
 
 template <typename T>
-void
-TcpStreamClient::PreparePacket (T & message)
+void TcpStreamClient::PreparePacket (T & message)
 {
   NS_LOG_FUNCTION (this << message);
   std::ostringstream ss;
@@ -526,8 +570,7 @@ TcpStreamClient::PreparePacket (T & message)
   memcpy (m_data, ss.str ().c_str (), dataSize);
 }
 
-void
-TcpStreamClient::ConnectionSucceeded (Ptr<Socket> socket)
+void TcpStreamClient::ConnectionSucceeded (Ptr<Socket> socket)
 {
   NS_LOG_FUNCTION (this << socket);
   NS_LOG_LOGIC ("Tcp Stream Client connection succeeded");
@@ -535,102 +578,106 @@ TcpStreamClient::ConnectionSucceeded (Ptr<Socket> socket)
   Controller (event);
 }
 
-void
-TcpStreamClient::ConnectionFailed (Ptr<Socket> socket)
+void TcpStreamClient::ConnectionFailed (Ptr<Socket> socket)
 {
   NS_LOG_FUNCTION (this << socket);
   NS_LOG_LOGIC ("Tcp Stream Client connection failed");
 }
 
-void
-TcpStreamClient::LogThroughput (uint32_t packetSize)
+void TcpStreamClient::LogThroughput (uint32_t packetSize)
 {
   NS_LOG_FUNCTION (this);
-  throughputLog << std::setfill (' ') << std::setw (13) << Simulator::Now ().GetMicroSeconds ()  / (double) 1000000 << " "
-                << std::setfill (' ') << std::setw (13) << packetSize << "\n";
+  throughputLog << Simulator::Now ().GetMicroSeconds ()  / (double) 1000000 << " "
+                << std::to_string((m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter)*8)/((m_transmissionEndReceivingSegment-m_transmissionStartReceivingSegment)/(double)1000000)) << "\n";
   throughputLog.flush ();
+  
 }
 
-void
-TcpStreamClient::LogDownload ()
+void TcpStreamClient::LogDownload ()
 {
   NS_LOG_FUNCTION (this);
-  downloadLog << std::setfill (' ') << std::setw (13) << m_segmentCounter << " "
-              << std::setfill (' ') << std::setw (21) << m_downloadRequestSent / (double)1000000 << " "
-              << std::setfill (' ') << std::setw (14) << m_transmissionStartReceivingSegment / (double)1000000 << " "
-              << std::setfill (' ') << std::setw (12) << m_transmissionEndReceivingSegment / (double)1000000 << " "
-              << std::setfill (' ') << std::setw (12) << m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter) << " "
-              << std::setfill (' ') << std::setw (12) << "Y\n";
+  downloadLog <<  m_segmentCounter << " "
+              <<  m_downloadRequestSent / (double)1000000 << " "
+              <<  m_transmissionStartReceivingSegment / (double)1000000 << " "
+              <<  m_transmissionEndReceivingSegment / (double)1000000 << " "
+              <<  m_videoData.segmentSize.at (m_currentRepIndex).at (m_segmentCounter) << " "
+              <<  "\n";
   downloadLog.flush ();
+
 }
 
-void
-TcpStreamClient::LogBuffer ()
+void TcpStreamClient::LogBuffer ()
 {
   NS_LOG_FUNCTION (this);
-  bufferLog << std::setfill (' ') << std::setw (13) << m_transmissionEndReceivingSegment / (double)1000000 << " "
-            << std::setfill (' ') << std::setw (13) << m_bufferData.bufferLevelOld.back () / (double)1000000 << "\n"
-            << std::setfill (' ') << std::setw (13) << m_transmissionEndReceivingSegment / (double)1000000 << " "
-            << std::setfill (' ') << std::setw (13) << m_bufferData.bufferLevelNew.back () / (double)1000000 << "\n";
+  bufferLog <<  m_bufferData.timeNow.back() / (double)1000000 << " "
+           << m_bufferData.bufferLevelNew.back () / (double)1000000 << "\n";
   bufferLog.flush ();
 }
 
-void
-TcpStreamClient::LogAdaptation (algorithmReply answer)
+void TcpStreamClient::LogAdaptation (algorithmReply answer)
 {
   NS_LOG_FUNCTION (this);
-  adaptationLog << std::setfill (' ') << std::setw (13) << m_segmentCounter << " "
-                << std::setfill (' ') << std::setw (9) << m_currentRepIndex << " "
-                << std::setfill (' ') << std::setw (22) << answer.decisionTime / (double)1000000 << " "
-                << std::setfill (' ') << std::setw (4) << answer.decisionCase << " "
-                << std::setfill (' ') << std::setw (9) << answer.delayDecisionCase << "\n";
+ adaptationLog << m_segmentCounter << " "
+                << m_currentRepIndex << " "
+                << answer.decisionTime / (double)1000000 << " "
+                << answer.decisionCase << " "
+                << answer.nextDownloadDelay/ (double)1000000 << " "
+                << answer.delayDecisionCase << " "
+                << std::to_string(answer.bandwidthEstimate) << "\n";
   adaptationLog.flush ();
+
 }
 
-void
-TcpStreamClient::LogPlayback ()
+void TcpStreamClient::LogPlayback ()
 {
   NS_LOG_FUNCTION (this);
-  playbackLog << std::setfill (' ') << std::setw (13) << m_currentPlaybackIndex << " "
-              << std::setfill (' ') << std::setw (14) << Simulator::Now ().GetMicroSeconds ()  / (double)1000000 << " "
-              << std::setfill (' ') << std::setw (13) << m_playbackData.playbackIndex.at (m_currentPlaybackIndex) << "\n";
+  double becameAvailable = getAvailabilityTime(m_currentPlaybackIndex);
+  playbackLog << m_currentPlaybackIndex << " "
+              <<  ((becameAvailable)/ (double)1000000) << " "
+              <<  std::to_string(Simulator::Now ().GetMicroSeconds ()  / (double)1000000) << " "
+              <<  std::to_string((Simulator::Now ().GetMicroSeconds ()-(becameAvailable-m_videoData.segmentDuration))  / (double)1000000) << " "
+              << m_playbackData.playbackIndex.at (m_currentPlaybackIndex) << "\n";
   playbackLog.flush ();
 }
 
-void
-TcpStreamClient::InitializeLogFiles (std::string simulationId, std::string clientId, std::string numberOfClients)
+void TcpStreamClient::InitializeLogFiles (std::string simulationId, std::string clientId, std::string numberOfClients)
 {
   NS_LOG_FUNCTION (this);
 
-  std::string dLog = dashLogDirectory + m_algoName + "/" +  numberOfClients  + "/sim" + simulationId + "_" + "cl" + clientId + "_"  + "downloadLog.txt";
+  std::string dLog = dashLogDirectory + "/SimID_" + simulationId + "/" + "client" + clientId + "_" + "downloadLog.txt";
   downloadLog.open (dLog.c_str ());
-  downloadLog << "Segment_Index Download_Request_Sent Download_Start Download_End Segment_Size Download_OK\n";
+  downloadLog << "Segment_Index Download_Request_Sent Download_Start Download_End Segment_Size\n";
   downloadLog.flush ();
 
-  std::string pLog = dashLogDirectory + m_algoName + "/" +  numberOfClients  + "/sim" + simulationId + "_" + "cl" + clientId + "_"  + "playbackLog.txt";
+  std::string pLog = dashLogDirectory + "/SimID_" + simulationId + "/" + "client" + clientId + "_" + "playbackLog.txt";
   playbackLog.open (pLog.c_str ());
-  playbackLog << "Segment_Index Playback_Start Quality_Level\n";
+  playbackLog << "Segment_Index Became_Available Playback_Start Live_Latency Quality_Level\n";
   playbackLog.flush ();
 
-  std::string aLog = dashLogDirectory + m_algoName + "/" +  numberOfClients  + "/sim" + simulationId + "_" + "cl" + clientId + "_"  + "adaptationLog.txt";
+  std::string aLog = dashLogDirectory + "/SimID_" + simulationId + "/" + "client" + clientId + "_" + "adaptationLog.txt";
   adaptationLog.open (aLog.c_str ());
-  adaptationLog << "Segment_Index Rep_Level Decision_Point_Of_Time Case DelayCase\n";
+  adaptationLog << "Segment_Index Rep_Level Decision_Point_Of_Time Case Delay DelayCase BandwidthEstimate\n";
   adaptationLog.flush ();
 
-  std::string bLog = dashLogDirectory + m_algoName + "/" +  numberOfClients  + "/sim" + simulationId + "_" + "cl" + clientId + "_"  + "bufferLog.txt";
+  std::string bLog = dashLogDirectory + "/SimID_" + simulationId + "/" + "client" + clientId + "_" + "bufferLog.txt";
   bufferLog.open (bLog.c_str ());
   bufferLog << "     Time_Now  Buffer_Level \n";
   bufferLog.flush ();
 
-  std::string tLog = dashLogDirectory + m_algoName + "/" +  numberOfClients  + "/sim" + simulationId + "_" + "cl" + clientId + "_"  + "throughputLog.txt";
+  std::string tLog = dashLogDirectory + "/SimID_" + simulationId + "/" + "client" + clientId + "_" + "throughputLog.txt";
   throughputLog.open (tLog.c_str ());
   throughputLog << "     Time_Now Bytes Received \n";
   throughputLog.flush ();
 
-  std::string buLog = dashLogDirectory + m_algoName + "/" +  numberOfClients  + "/sim" + simulationId + "_" + "cl" + clientId + "_"  + "bufferUnderrunLog.txt";
+  std::string buLog = dashLogDirectory + "/SimID_" + simulationId + "/" + "client" + clientId + "_" + "bufferUnderrunLog.txt";
   bufferUnderrunLog.open (buLog.c_str ());
   bufferUnderrunLog << ("Buffer_Underrun_Started_At         Until \n");
   bufferUnderrunLog.flush ();
 }
-
+  
+double TcpStreamClient::getAvailabilityTime(int64_t segmentIndex)
+{
+  return (double)m_videoData.segmentDuration*segmentIndex;
+}
+  
 } // Namespace ns3
