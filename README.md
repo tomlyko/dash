@@ -9,9 +9,9 @@ Now supports:
    	- delay - The delay of the link connecting the clients to the server,
   	- trace - The relative path (from ns-3.x directory) to the network trace file,
 	- liveDelay - Number of full DASH segments behind live,
-- more accurate buffer level logging (in seconds instead of segments),
-- more accurate throughput logging,
-- more accurate MPD:Bandwidth parameter for each quality level set in the segmentSizes file,
+- More accurate buffer level logging (in seconds instead of segments),
+- More accurate throughput logging,
+- More accurate MPD:Bandwidth parameter for each quality level set in the segmentSizes file,
 
 Example trace file (Time New_Bandwidth(kbps)):
 ```
