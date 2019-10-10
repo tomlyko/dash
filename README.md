@@ -1,3 +1,29 @@
+# Modified DASH-NS3 model
+
+Now supports: 
+- Live DASH streaming,
+- Traffic shaping,
+- More ABRs: simple benchmark ABR, MPC, and Bola,
+- More parameters:
+	- linkRate - Inital bandwidth of the link connecting the clients to the server,
+   	- delay - The delay of the link connecting the clients to the server,
+  	- trace - The relative path (from ns-3.x directory) to the network trace file,
+	- liveDelay - Number of full DASH segments behind live,
+- more accurate buffer level logging (in seconds instead of segments),
+- more accurate throughput logging,
+- more accurate MPD:Bandwidth parameter for each quality level set in the segmentSizes file,
+
+Example trace file (Time New_Bandwidth(kbps)):
+```
+0 5000
+60 100
+90 5000
+```
+
+
+-----------------------------------------------------------------------------------
+Original README below:
+
 # DASH-NS3
 A simulation model for HTTP-based adaptive streaming applications
 
