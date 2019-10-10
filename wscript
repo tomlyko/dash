@@ -10,6 +10,9 @@ def build(bld):
         'model/festive.cc',
         'model/panda.cc',
         'model/tobasco2.cc',
+        'model/simple.cc',
+        'model/mpc.cc',
+        'model/bola.cc',
         'helper/tcp-stream-helper.cc',
         ]
 
@@ -23,6 +26,9 @@ def build(bld):
         'model/festive.h',
         'model/panda.h',
         'model/tobasco2.h',
+        'model/simple.h',
+        'model/mpc.h',
+        'model/bola.h',
         'helper/tcp-stream-helper.h',
         ]
 
