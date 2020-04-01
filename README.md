@@ -1,4 +1,6 @@
-# A simulation model for Live DASH with CMAF chunks support 
+# NS3-DASH-CMAF-Model
+
+A simulation model for Live DASH with CMAF chunks support 
 
 Now supports: 
 - CMAF chunks,
