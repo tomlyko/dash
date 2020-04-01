@@ -26,7 +26,7 @@ Example run command:
 ```
 ./waf "--run=tcp-stream-lan --simulationId=0 --numberOfClients=1 --adaptationAlgo=mpc --segmentDuration=2000000 --segmentSizeFile=src/dash/segSize_6min_2000000.txt --linkRate=20000Kbps --delay=0ms --liveDelay=1 ---trace=throughputProfiles/5.txt"
 ```
-
+If you use this modified model, please reference this github repository.
 
 -----------------------------------------------------------------------------------
 Original README below:
