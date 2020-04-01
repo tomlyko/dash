@@ -33,7 +33,8 @@ public:
   PandaAlgorithm (  const videoData &videoData,
                     const playbackData & playbackData,
                     const bufferData & bufferData,
-                    const throughputData & throughput);
+                    const throughputData & throughput,
+					int chunks, int cmaf);
 
   algorithmReply GetNextRep (const int64_t segmentCounter, int64_t clientId);
 
@@ -55,6 +56,8 @@ private:
   bool firstDone;
   
   uint64_t segDuration;
+  int64_t chunks;
+  int cmaf;
 };
 
 } // namespace ns3

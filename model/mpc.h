@@ -11,15 +11,12 @@ public:
   MPCAlgo (  const videoData &videoData,
                       const playbackData & playbackData,
                       const bufferData & bufferData,
-                      const throughputData & throughput);
+                      const throughputData & throughput,
+					  int chunks, int cmaf);
 
   algorithmReply GetNextRep ( const int64_t segmentCounter, int64_t clientId);
 
 private:
-  /**
-   * \brief Average segment throughput during the time interval [t1, t2]
-   */
-  double AverageSegmentThroughput (int64_t currentSegment);
 
   const int64_t m_highestRepIndex;
   int64_t m_lastRepIndex;
@@ -27,10 +24,12 @@ private:
   std::list<double>  past_errors;
   std::list<double>  past_bandwidth_ests;
   
-  float REBUF_PENALTY = 7; //default: balanced
+  float REBUF_PENALTY = 7;
   float SMOOTH_PENALTY = 1;
   
   uint64_t segDuration;
+  int64_t chunks;
+  int cmaf;
   
 };
 } // namespace ns3

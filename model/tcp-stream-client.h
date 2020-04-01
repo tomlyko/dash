@@ -32,8 +32,10 @@
 #include "festive.h"
 #include "panda.h"
 #include "simple.h"
+#include "simpleBuffer.h"
 #include "mpc.h"
 #include "bola.h"
+#include "liveabr.h"
 
 
 namespace ns3 {
@@ -259,6 +261,11 @@ private:
   */
   double getAvailabilityTime(int64_t segmentIndex);
 
+  /*
+    Records following QoE metrics: Avg Video Quality, Quality S.D., Rebuffer Ratio and Rebuffer Frequency
+  */
+  void log_QoE();
+
   uint32_t m_dataSize; //!< packet payload size
   uint8_t *m_data; //!< packet payload data
 
@@ -299,6 +306,15 @@ private:
   videoData m_videoData; //!< Information about segment sizes, average bitrates of representation levels and segment duration in microseconds
 
   bool playbackStarted;
+  int64_t chunk; //Number of chunks in a segment, if 0 segments have no chunks. Chunks can be played as soon as fetched, but the quality can be only changed at segment level
+  int playbackStart; //Number of segments/chunks to be fetched before playback begins.
+  int cmaf; //0: ABRs are dealing with chunks, 1: ABRs are dealing with segments, 2: ABRs optimized
+
+  int logLevel; //Logging level: 0: All, 1: Only playback and stalls, 2: Only QoE metrics: Avg Quality Lvl, Quality S.D., Rebuffer Ratio and Rebuffer Frequency
+
+  int stallsTotal;
+  double stallsTime;
+  double lastStallStartTime;
 
 };
 

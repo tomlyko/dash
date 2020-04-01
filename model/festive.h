@@ -33,7 +33,8 @@ public:
   FestiveAlgorithm (  const videoData &videoData,
                       const playbackData & playbackData,
                       const bufferData & bufferData,
-                      const throughputData & throughput);
+                      const throughputData & throughput,
+					  int64_t chunks, int cmaf);
 
   algorithmReply GetNextRep (const int64_t segmentCounter, int64_t clientId);
 
@@ -47,6 +48,8 @@ private:
   std::list<int>  switchHistory;
   
   uint64_t segDuration;
+  int64_t chunks;
+  int cmaf;
 };
 
 } // namespace ns3
