@@ -1,6 +1,7 @@
-# Modified DASH-NS3 model
+# Modified DASH-CMAF-NS3 model
 
 Now supports: 
+- CMAF chunks,
 - Live DASH streaming,
 - Traffic shaping,
 - More ABRs: simple benchmark ABR, MPC, and Bola,
@@ -9,6 +10,7 @@ Now supports:
    	- delay - The delay of the link connecting the clients to the server,
   	- trace - The relative path (from ns-3.x directory) to the network trace file,
 	- liveDelay - Number of full DASH segments behind live,
+	- joinOffset - Additional delay in seconds, after which the client join the stream
 - More accurate buffer level logging (in seconds instead of segments),
 - More accurate throughput logging,
 - More accurate MPD:Bandwidth parameter for each quality level set in the segmentSizes file,
